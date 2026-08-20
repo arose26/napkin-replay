@@ -31,7 +31,29 @@ The leave-one-out isolates each ingredient; the ratio arms ask napkin-returns' r
 
 ## Results
 
-*(sweep running — 8 recipes × 5 seeds × 500k steps; the one overnight job in the series so far. Filled in whichever way it lands.)*
+![results](assets/results.png)
+
+| arm | final IQM return (95% CI) | verdict on the hypothesis |
+|---|---|---|
+| `full` | **12.02** (9.97 – 14.03) | — |
+| `online` (no replay) | **5.07** (4.54 – 5.48) | ✓ confirmed: catastrophic, 42% of full (predicted <50%) |
+| `notarget` | **11.97** (11.33 – 12.89) | ✗ **refuted**: no detectable effect, not "hurts clearly" |
+| `nodouble` | **12.41** (10.57 – 14.66) | ✓ confirmed: nothing measurable |
+| `1step` | **9.01** (8.56 – 9.49) | ✓ confirmed: clearly worse (−25%) |
+| `ratio.25` | **9.09** (8.45 – 9.66) | ✓ part of #5: starving updates clearly loses |
+| `ratio4` | **12.13** (10.87 – 13.40) | ✗ part of #5: ties full, does **not** beat it |
+| `ratio8` | **11.81** (10.76 – 12.52) | ✓ part of #5: at/below ratio4 — the knee is real |
+
+**What actually holds DQN together on MinAtar Breakout: the replay buffer, and almost nothing
+else.** Removing replay costs 58%. Removing 3-step returns costs 25%. Removing the target
+network or double-Q costs *nothing detectable at n=5* — the two most famous stabilizers are
+ties here (a scale statement, not a universal one: this is a small net on a 10×10 game with a
+50k-transition buffer; the pathologies those fixes target may simply need more room to grow).
+
+**Replay ratio: paying more gradient steps per env step stops buying anything at ratio 1.**
+0.25 starves (−24%); 1, 4, and 8 are statistical ties at matched env steps. Sample reuse
+saturates far earlier here than the compute budget does — ratio 8 spends 8× the FLOPs of
+ratio 1 for the same return.
 
 ## Run it
 
