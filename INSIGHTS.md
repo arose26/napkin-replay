@@ -29,13 +29,33 @@ there, scaling rollout width silently *cut* updates-per-sample 4× below the ref
 stalled learning entirely (see napkin-gamemaster INSIGHTS). Update density has a wide flat
 plateau — and a cliff on each side.
 
-## 3. Sharded sweeps need per-run files AND a death watchdog
+## 3. Resumability saved the sweep; my death-detector was itself broken
 
-The 40-run sweep ran as 4 shards writing one JSON per finished run, resumable by file
-existence. That design survived three separate silent process deaths (no traceback, no OOM
-record — cause never identified) across two days: each relaunch skipped finished work and
-resumed mid-shard. What it did NOT survive gracefully was *noticing* the deaths — a dead shard
-looks exactly like a slow shard from the outside. The fix that stuck: a watchdog that waits on
-the process and reports "exited WITH result" vs "exited WITHOUT result" the moment it happens.
+The 40-run sweep ran as 4 shards writing one JSON per finished run, resumable by file existence.
+That design survived repeated silent process deaths across two days — each relaunch skipped
+finished work and resumed mid-shard — and it is the only reason the sweep ever finished.
 
-**Takeaway:** resumability solves recovery, not detection. Sharded long jobs need both.
+The last run (`ratio8` seed 3) took three attempts and ~12 hours of wall clock for what is a
+4-hour job. Its shard died once at 05:22 and again at 16:55, both times with no traceback. The
+second death coincides to the minute with a kernel global-OOM event (the logged victim was an
+unrelated 17GB-virtual java process; the kernel logs only its chosen victim, so python's death
+is circumstantial, not proven — and I had *raised* memory pressure myself an hour earlier by
+starting three more trainers alongside a browser-automation session).
+
+Two real lessons, one of them embarrassing:
+
+**A run that checkpoints only at completion can lose everything.** The second death threw away
+72% of a 4-hour run (360k of 500k steps) because the JSON is written at the end. Per-run
+granularity was fine for a 10-minute run and far too coarse for a 4-hour one; checkpoint
+granularity should track run length, not the convenience of the file layout.
+
+**Detection code needs its own test.** I wrote a watchdog to catch exactly this — wait on the
+pid, then report "exited WITH result" vs "exited WITHOUT result" — and it never produced a
+verdict: `pgrep -f` also matched the shell wrapper, so it waited on the wrong pids and fell
+through silently. What actually told me the sweep had finished was a dumb loop counting result
+files. The monitoring I trusted was less reliable than the monitoring I considered too crude to
+mention.
+
+**Takeaway:** resumability solves recovery, not detection — and an untested watchdog is not
+detection either. Prefer the crudest check that observes the *artifact* (does the file exist
+yet?) over a clever one that observes the *process*.
